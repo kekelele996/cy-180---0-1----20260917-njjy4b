@@ -158,6 +158,12 @@ func (h *RecordingHandler) UploadAudio(c *gin.Context) {
 	}
 	defer file.Close()
 
+	// 上传对象存储前先校验授权，撤销后立即阻止，避免产生孤儿对象。
+	if err := h.recordingSvc.PreUploadCheck(id); err != nil {
+		c.Error(err)
+		return
+	}
+
 	ext := "webm"
 	if name := header.Filename; name != "" {
 		if idx := strings.LastIndex(name, "."); idx >= 0 {

@@ -2,8 +2,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AudioPlayer from '../../components/AudioPlayer'
+import ConsentBadge from '../../components/ConsentBadge'
 import EmptyState from '../../components/EmptyState'
 import StatusBadge from '../../components/StatusBadge'
+import { CONSENT_STATUS_VERIFIED, PROJECT_STATUS_ARCHIVED } from '../../constants'
+import { useConsentStore } from '../../stores/consentStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { useQuestionStore } from '../../stores/questionStore'
 import { useRecordingStore } from '../../stores/recordingStore'
@@ -16,6 +19,8 @@ export default function InterviewPage() {
   const { projects, fetchList } = useProjectStore()
   const { questions, fetchByProject } = useQuestionStore()
   const { fetchByProject: fetchRecordings } = useRecordingStore()
+  const { fetchByProject: fetchConsent, consents } = useConsentStore()
+  const consent = selectedProject ? consents[selectedProject] : undefined
   const [activeQuestion, setActiveQuestion] = useState(0)
   const [message, setMessage] = useState('')
 
@@ -27,11 +32,16 @@ export default function InterviewPage() {
     if (selectedProject) {
       fetchByProject(selectedProject)
       fetchRecordings(selectedProject)
+      fetchConsent(selectedProject)
       setActiveQuestion(0)
     } else {
       setActiveQuestion(0)
     }
-  }, [selectedProject, fetchByProject, fetchRecordings])
+  }, [selectedProject, fetchByProject, fetchRecordings, fetchConsent])
+
+  const selectedProjectModel = projects.find((p) => p.id === selectedProject)
+  const projectArchived = selectedProjectModel?.status === PROJECT_STATUS_ARCHIVED
+  const recordingAllowed = !projectArchived && consent?.status === CONSENT_STATUS_VERIFIED
 
   const chooseProject = (projectId: number) => {
     const next = new URLSearchParams(params)
@@ -60,10 +70,30 @@ export default function InterviewPage() {
             </option>
           ))}
         </select>
+        {selectedProject > 0 && (
+          <div className="consent-status-line">
+            受访者授权：
+            {consent ? <ConsentBadge status={consent.status} /> : <span className="muted">尚未登记</span>}
+          </div>
+        )}
       </section>
 
       {selectedProject === 0 ? (
         <EmptyState title="请先选择采访项目" description="选择一个项目后即可开始录音" />
+      ) : projectArchived ? (
+        <EmptyState
+          title="项目已归档，授权只读"
+          description="归档项目不能新增录音或时间轴节点，已有材料可在项目详情页查看复核"
+        />
+      ) : !recordingAllowed ? (
+        <EmptyState
+          title="受访者授权尚未生效"
+          description={
+            consent?.status === 'revoked'
+              ? '该项目授权已被管理员撤销，后续录音与时间轴节点已阻止；已有材料仍可由管理员复核'
+              : '授权核验通过前不能开始录音，请先由采访员登记授权并由档案员核验'
+          }
+        />
       ) : (
         <>
           <section className="card">

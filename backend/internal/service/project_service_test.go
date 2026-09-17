@@ -12,10 +12,10 @@ import (
 )
 
 type fakeProjectRepo struct {
-	projects map[uint]*model.Project
-	updated  *model.Project
+	projects  map[uint]*model.Project
+	updated   *model.Project
 	forUpdate bool
-	err      error
+	err       error
 }
 
 func (f *fakeProjectRepo) Create(project *model.Project) error {
@@ -52,7 +52,7 @@ func (f *fakeProjectRepo) Update(project *model.Project) error {
 func (f *fakeProjectRepo) UpdateStatus(project *model.Project) error {
 	return f.Update(project)
 }
-func (f *fakeProjectRepo) Delete(id uint) error { return nil }
+func (f *fakeProjectRepo) Delete(id uint) error  { return nil }
 func (f *fakeProjectRepo) Count() (int64, error) { return 0, nil }
 
 func TestProjectServiceTransitionStatus(t *testing.T) {

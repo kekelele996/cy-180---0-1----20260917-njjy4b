@@ -29,6 +29,28 @@ CREATE TABLE IF NOT EXISTS projects (
   INDEX idx_projects_created_by (created_by)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS consents (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  project_id BIGINT UNSIGNED NOT NULL UNIQUE,
+  interviewee_name VARCHAR(64) NOT NULL,
+  scope VARCHAR(512) NOT NULL,
+  statement VARCHAR(512) DEFAULT '',
+  status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  registered_by BIGINT UNSIGNED NOT NULL,
+  registered_by_name VARCHAR(64) DEFAULT '',
+  registered_at DATETIME(3) NOT NULL,
+  verified_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  verified_by_name VARCHAR(64) DEFAULT '',
+  verified_at DATETIME(3) NULL,
+  revoked_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  revoked_by_name VARCHAR(64) DEFAULT '',
+  revoked_at DATETIME(3) NULL,
+  revoke_reason VARCHAR(512) DEFAULT '',
+  created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  INDEX idx_consents_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS questions (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   project_id BIGINT UNSIGNED NOT NULL,

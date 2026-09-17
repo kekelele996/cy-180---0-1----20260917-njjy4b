@@ -50,6 +50,17 @@ export const RECORDING_STATUS_TEXT: Record<string, string> = {
   [RECORDING_STATUS_FAILED]: '失败',
 }
 
+// 受访者授权状态机枚举（与后端 constants/consent_status.go 同步）
+export const CONSENT_STATUS_PENDING = 'pending'
+export const CONSENT_STATUS_VERIFIED = 'verified'
+export const CONSENT_STATUS_REVOKED = 'revoked'
+
+export const CONSENT_STATUS_TEXT: Record<string, string> = {
+  [CONSENT_STATUS_PENDING]: '待核验',
+  [CONSENT_STATUS_VERIFIED]: '已核验·生效中',
+  [CONSENT_STATUS_REVOKED]: '已撤销',
+}
+
 // 错误码（与后端 constants/error_codes.go 同步）
 export const ERROR_CODES = {
   OK: 0,
@@ -66,8 +77,10 @@ export const ERROR_CODES = {
   PROJECT_STATUS: 40902,
   RECORDING_STATUS: 40903,
   MARKER_CONFLICT: 40904,
+  CONSENT_CONFLICT: 40905,
 } as const
 
 export type ProjectStatus = typeof PROJECT_STATUS_DRAFT | typeof PROJECT_STATUS_IN_PROGRESS | typeof PROJECT_STATUS_COMPLETED | typeof PROJECT_STATUS_ARCHIVED
 export type RecordingStatus = typeof RECORDING_STATUS_RECORDING | typeof RECORDING_STATUS_PROCESSING | typeof RECORDING_STATUS_READY | typeof RECORDING_STATUS_FAILED
+export type ConsentStatus = typeof CONSENT_STATUS_PENDING | typeof CONSENT_STATUS_VERIFIED | typeof CONSENT_STATUS_REVOKED
 export type Role = typeof ROLE_ADMIN | typeof ROLE_INTERVIEWER | typeof ROLE_ARCHIVIST

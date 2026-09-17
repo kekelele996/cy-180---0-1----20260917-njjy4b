@@ -20,6 +20,8 @@ type RecordingService interface {
 	List(projectID, questionID uint) ([]model.Recording, error)
 	Update(actor *model.User, id uint, req *dto.UpdateRecordingRequest) (*model.Recording, error)
 	UpdateSummary(actor *model.User, id uint, summary string) (*model.Recording, error)
+	// PreUploadCheck 上传音频前校验授权生效、项目未归档，避免文件上传后才被拒绝。
+	PreUploadCheck(id uint) error
 	AttachAudio(actor *model.User, id uint, audioKey string, duration int) (*model.Recording, error)
 	Delete(actor *model.User, id uint) error
 	CountByProject(projectID uint) (int64, error)
@@ -29,26 +31,64 @@ type recordingService struct {
 	recordingRepo repository.RecordingRepository
 	projectRepo   repository.ProjectRepository
 	questionRepo  repository.QuestionRepository
+	consentRepo   repository.ConsentRepository
 	logger        *slog.Logger
 }
 
 // NewRecordingService 构造录音服务。
-func NewRecordingService(recordingRepo repository.RecordingRepository, projectRepo repository.ProjectRepository, questionRepo repository.QuestionRepository, logger *slog.Logger) RecordingService {
-	return &recordingService{recordingRepo: recordingRepo, projectRepo: projectRepo, questionRepo: questionRepo, logger: logger}
+func NewRecordingService(recordingRepo repository.RecordingRepository, projectRepo repository.ProjectRepository, questionRepo repository.QuestionRepository, consentRepo repository.ConsentRepository, logger *slog.Logger) RecordingService {
+	return &recordingService{
+		recordingRepo: recordingRepo,
+		projectRepo:   projectRepo,
+		questionRepo:  questionRepo,
+		consentRepo:   consentRepo,
+		logger:        logger,
+	}
+}
+
+// ensureProjectWritable 校验项目存在、授权已生效且项目未归档。
+func (s *recordingService) ensureProjectWritable(projectID uint) error {
+	project, err := s.projectRepo.FindByID(projectID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return util.NewAppError(constants.CodeNotFound, fmt.Sprintf("项目 %d 不存在", projectID), err)
+		}
+		return util.NewAppError(constants.CodeInternal, fmt.Sprintf("查询项目 %d 失败", projectID), err)
+	}
+	if project.Status == constants.ProjectStatusArchived {
+		return util.NewAppError(constants.CodeProjectStatus,
+			fmt.Sprintf("项目 %d 已归档，授权只读，不能新增录音或上传音频", projectID), nil)
+	}
+	consent, err := s.consentRepo.FindByProjectID(projectID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return util.NewAppError(constants.CodeForbidden,
+				fmt.Sprintf("项目 %d 受访者授权尚未登记，授权生效前不能新增录音", projectID), nil)
+		}
+		return util.NewAppError(constants.CodeInternal, fmt.Sprintf("查询项目 %d 授权失败", projectID), err)
+	}
+	if consent.Status != constants.ConsentStatusVerified {
+		return util.NewAppError(constants.CodeForbidden,
+			fmt.Sprintf("项目 %d 的受访者授权当前为 %s 状态，授权生效前不能新增录音或上传音频", projectID, consent.Status), nil)
+	}
+	return nil
 }
 
 func (s *recordingService) Create(actor *model.User, req *dto.CreateRecordingRequest) (*model.Recording, error) {
-	if _, err := s.projectRepo.FindByID(req.ProjectID); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, util.NewAppError(constants.CodeNotFound, fmt.Sprintf("项目 %d 不存在", req.ProjectID), err)
-		}
-		return nil, util.NewAppError(constants.CodeInternal, fmt.Sprintf("查询项目 %d 失败", req.ProjectID), err)
+	if err := s.ensureProjectWritable(req.ProjectID); err != nil {
+		return nil, err
 	}
-	if _, err := s.questionRepo.FindByID(req.QuestionID); err != nil {
+	question, err := s.questionRepo.FindByID(req.QuestionID)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, util.NewAppError(constants.CodeNotFound, fmt.Sprintf("问题 %d 不存在", req.QuestionID), err)
 		}
 		return nil, util.NewAppError(constants.CodeInternal, fmt.Sprintf("查询问题 %d 失败", req.QuestionID), err)
+	}
+	// 禁止跨项目引用：问题必须隶属于录音所属项目。
+	if question.ProjectID != req.ProjectID {
+		return nil, util.NewAppError(constants.CodeValidation,
+			fmt.Sprintf("问题 %d 不属于项目 %d，不能跨项目关联录音", req.QuestionID, req.ProjectID), nil)
 	}
 	recording := &model.Recording{
 		ProjectID:       req.ProjectID,
@@ -139,6 +179,17 @@ func (s *recordingService) UpdateSummary(actor *model.User, id uint, summary str
 	return recording, nil
 }
 
+func (s *recordingService) PreUploadCheck(id uint) error {
+	recording, err := s.recordingRepo.FindByID(id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return util.NewAppError(constants.CodeNotFound, fmt.Sprintf("录音 %d 不存在", id), err)
+		}
+		return util.NewAppError(constants.CodeInternal, fmt.Sprintf("查询录音 %d 失败", id), err)
+	}
+	return s.ensureProjectWritable(recording.ProjectID)
+}
+
 func (s *recordingService) AttachAudio(actor *model.User, id uint, audioKey string, duration int) (*model.Recording, error) {
 	recording, err := s.recordingRepo.FindByIDForUpdate(id)
 	if err != nil {
@@ -146,6 +197,10 @@ func (s *recordingService) AttachAudio(actor *model.User, id uint, audioKey stri
 			return nil, util.NewAppError(constants.CodeNotFound, fmt.Sprintf("录音 %d 不存在", id), err)
 		}
 		return nil, util.NewAppError(constants.CodeInternal, fmt.Sprintf("查询录音 %d 失败", id), err)
+	}
+	// 撤销授权后立即阻止上传：即使文件已传到对象存储，也不允许关联落库。
+	if err := s.ensureProjectWritable(recording.ProjectID); err != nil {
+		return nil, err
 	}
 	recording.AudioKey = audioKey
 	if duration > 0 {

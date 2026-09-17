@@ -731,3 +731,62 @@ code {
   border-radius: 4px;
   font-size: 12px;
 }
+
+/* 受访者授权面板 */
+.badge-revoked { background: #fee2e2; color: #991b1b; }
+
+.consent-notice {
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.consent-status-line {
+  margin-top: 10px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.consent-form {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 560px;
+}
+
+.consent-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.consent-form textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.consent-detail {
+  margin-top: 4px;
+}
+
+.consent-revoked {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  border-radius: 8px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

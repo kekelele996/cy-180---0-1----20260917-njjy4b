@@ -28,14 +28,16 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, logger *slog.Logg
 	questionRepo := repository.NewQuestionRepository(db)
 	recordingRepo := repository.NewRecordingRepository(db)
 	markerRepo := repository.NewTimelineMarkerRepository(db)
+	consentRepo := repository.NewConsentRepository(db)
 	auditRepo := repository.NewAuditLogRepository(db)
 
 	// service
 	userSvc := service.NewUserService(userRepo, cfg, logger)
 	projectSvc := service.NewProjectService(projectRepo, logger)
 	questionSvc := service.NewQuestionService(questionRepo, projectRepo, logger)
-	recordingSvc := service.NewRecordingService(recordingRepo, projectRepo, questionRepo, logger)
-	markerSvc := service.NewTimelineMarkerService(markerRepo, projectRepo, recordingRepo, logger)
+	consentSvc := service.NewConsentService(consentRepo, projectRepo, logger)
+	recordingSvc := service.NewRecordingService(recordingRepo, projectRepo, questionRepo, consentRepo, logger)
+	markerSvc := service.NewTimelineMarkerService(markerRepo, projectRepo, recordingRepo, consentRepo, logger)
 	auditSvc := service.NewAuditService(auditRepo, logger)
 	storageSvc, err := service.NewStorageService(cfg, logger)
 	if err != nil {
@@ -48,6 +50,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, logger *slog.Logg
 	questionHandler := handler.NewQuestionHandler(questionSvc, auditSvc, logger)
 	recordingHandler := handler.NewRecordingHandler(recordingSvc, storageSvc, auditSvc, logger)
 	markerHandler := handler.NewTimelineMarkerHandler(markerSvc, auditSvc, logger)
+	consentHandler := handler.NewConsentHandler(consentSvc, auditSvc, logger)
 	auditHandler := handler.NewAuditHandler(auditSvc, logger)
 
 	engine := gin.New()
@@ -75,6 +78,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client, logger *slog.Logg
 	RegisterQuestionRoutes(v1, questionHandler, cfg, logger)
 	RegisterRecordingRoutes(v1, recordingHandler, cfg, logger)
 	RegisterTimelineMarkerRoutes(v1, markerHandler, cfg, logger)
+	RegisterConsentRoutes(v1, consentHandler, cfg, logger)
 	RegisterAuditRoutes(v1, auditHandler, cfg, logger)
 
 	return engine, nil

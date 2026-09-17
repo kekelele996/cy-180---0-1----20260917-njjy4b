@@ -36,6 +36,7 @@ docker compose down -v --remove-orphans
 - 采访问题管理：为项目添加问题清单，作为录音提纲
 - 录音管理：浏览器端录音 → 上传 MinIO → 自动关联到对应问题 → 一句话摘要
 - 时间轴：按项目/录音标注关键节点，项目页按时间线展示所有片段并支持播放
+- 受访者授权（知情同意）闭环：采访员登记 → 档案员核验 → 管理员撤销（须填原因）；授权生效前锁定录音与时间轴节点，归档后授权只读，撤销立即阻止上传但保留已有材料供复核
 - 操作审计日志（仅管理员）、全局错误处理与请求追踪（request_id）
 
 ## 技术栈
@@ -151,6 +152,10 @@ npm run dev                # 默认 http://localhost:5173，/api 代理到 http:
 | POST | /api/v1/projects/:id/questions | 添加问题 | 登录 |
 | PUT | /api/v1/questions/:id | 更新问题 | 登录 |
 | DELETE | /api/v1/questions/:id | 删除问题 | 登录 |
+| GET | /api/v1/projects/:id/consent | 查询受访者授权 | 登录 |
+| POST | /api/v1/projects/:id/consent/register | 登记受访者授权 | 采访员（管理员可代操作） |
+| POST | /api/v1/projects/:id/consent/verify | 核验受访者授权 | 档案员（管理员可代操作） |
+| POST | /api/v1/projects/:id/consent/revoke | 撤销受访者授权（body 必填 reason） | 管理员 |
 | GET | /api/v1/recordings?project_id= 或 ?question_id= | 录音列表（复用 RecordingService.List） | 登录 |
 | POST | /api/v1/recordings | 创建录音记录 | 登录 |
 | GET | /api/v1/recordings/:id | 录音详情 | 登录 |
@@ -282,6 +287,30 @@ curl -sS "http://localhost:9180/api/v1/audit-logs?page=1&page_size=10" -H "Autho
 - `frontend/src/pages/projects/ProjectDetailPage.tsx`（时间线状态展示）
 - `frontend/src/pages/interview/InterviewPage.tsx`（录音面板状态展示）
 - `frontend/src/api/types.ts`（RecordingStatus 类型）
+
+### 4. 受访者授权状态 ConsentStatus（pending / verified / revoked）
+
+授权闭环规则：采访员登记（pending）→ 档案员核验（verified，授权生效）→ 管理员可撤销（revoked，必须填写原因）。授权非 verified 或项目已归档时，拒绝新增录音、上传音频、标注时间轴节点；撤销立即阻止后续上传，已有录音材料保留供管理员复核；项目归档后授权只读。
+
+后端出现位置：
+- `backend/internal/constants/consent_status.go`（定义与校验）
+- `backend/internal/model/consent.go`（status 字段，project_id 唯一索引）
+- `backend/internal/dto/consent.go`（RegisterConsentRequest / RevokeConsentRequest 的 reason 必填校验）
+- `backend/internal/service/consent_service.go`（登记/核验/撤销状态机、EnsureUploadAllowed 门禁、角色校验、归档只读）
+- `backend/internal/service/recording_service.go`、`backend/internal/service/timeline_marker_service.go`（创建/上传前强制授权校验，拒绝跨项目引用）
+- `backend/internal/handler/consent_handler.go`、`backend/internal/handler/recording_handler.go`（上传前 PreUploadCheck）
+- `backend/internal/router/consent.go`（RBAC：register 采访员 / verify 档案员 / revoke 管理员）
+- `backend/internal/repository/consent_repository.go`（唯一索引冲突映射为 ErrConflict，FOR UPDATE 行锁）
+- `backend/internal/constants/log_templates.go`（LogConsentRegister/Verify/Revoke）
+- `backend/internal/constants/error_codes.go`（CodeConsentConflict 40905）
+
+前端出现位置：
+- `frontend/src/constants/index.ts`（CONSENT_STATUS_* / CONSENT_STATUS_TEXT / CONSENT_CONFLICT）
+- `frontend/src/api/consent.ts`、`frontend/src/stores/consentStore.ts`（授权 API 与状态）
+- `frontend/src/components/ConsentPanel.tsx`（登记/核验/撤销入口，按角色显隐）、`frontend/src/components/ConsentBadge.tsx`（状态徽标）
+- `frontend/src/pages/projects/ProjectDetailPage.tsx`（授权面板、未生效锁定节点入口）
+- `frontend/src/pages/interview/InterviewPage.tsx`（授权未生效/撤销/归档时锁定录音面板）
+- `frontend/src/api/types.ts`（Consent / ConsentStatus 类型）
 
 ## Docker 部署说明
 

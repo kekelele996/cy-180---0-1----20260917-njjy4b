@@ -1,15 +1,18 @@
-// 项目详情页：基本信息、采访问题、时间线（录音片段 + 关键节点 + 一句话摘要）。
+// 项目详情页：基本信息、受访者授权、采访问题、时间线（录音片段 + 关键节点 + 一句话摘要）。
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import AudioPlayer from '../../components/AudioPlayer'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import ConsentPanel from '../../components/ConsentPanel'
 import EmptyState from '../../components/EmptyState'
 import StatusBadge from '../../components/StatusBadge'
 import {
+  CONSENT_STATUS_VERIFIED,
   PROJECT_STATUS_ARCHIVED,
   PROJECT_STATUS_COMPLETED,
   PROJECT_STATUS_IN_PROGRESS,
 } from '../../constants'
+import { useConsentStore } from '../../stores/consentStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { useQuestionStore } from '../../stores/questionStore'
 import { useRecordingStore } from '../../stores/recordingStore'
@@ -25,6 +28,7 @@ export default function ProjectDetailPage() {
   const { questions, fetchByProject, create: createQuestion, remove: removeQuestion } = useQuestionStore()
   const { recordings, fetchByProject: fetchRecordings } = useRecordingStore()
   const { markers, fetchByProject: fetchMarkers, create: createMarker } = useTimelineStore()
+  const consent = useConsentStore((s) => s.consents[projectId])
   const [newQuestion, setNewQuestion] = useState('')
   const [message, setMessage] = useState('')
 
@@ -51,6 +55,10 @@ export default function ProjectDetailPage() {
     return <div className="page">加载中…</div>
   }
 
+  const archived = detail.status === PROJECT_STATUS_ARCHIVED
+  // 仅授权核验通过且未归档时，允许新增时间轴节点。
+  const canAddMarkers = !archived && consent?.status === CONSENT_STATUS_VERIFIED
+
   return (
     <div className="page">
       {message && <div className="toast success">{message}</div>}
@@ -61,6 +69,15 @@ export default function ProjectDetailPage() {
         <h2>{detail.title}</h2>
         <StatusBadge status={detail.status} type="project" />
       </div>
+
+      <ConsentPanel projectId={projectId} projectStatus={detail.status} />
+
+      {!archived && consent?.status !== CONSENT_STATUS_VERIFIED && (
+        <div className="consent-notice">
+          受访者授权{consent ? `当前为「${consent.status === 'pending' ? '待核验' : '已撤销'}」` : '尚未登记'}：
+          授权核验通过前不能新增录音或时间轴节点。已有材料仍可正常查看与复核。
+        </div>
+      )}
 
       <section className="card">
         <div className="card-title">项目信息</div>
@@ -151,7 +168,13 @@ export default function ProjectDetailPage() {
         ) : (
           <div className="timeline">
             {recordings.map((r) => (
-              <TimelineItem key={r.id} recording={r} markers={markersOf(r.id)} onCreateMarker={createMarker} />
+              <TimelineItem
+                key={r.id}
+                recording={r}
+                markers={markersOf(r.id)}
+                onCreateMarker={createMarker}
+                canAddMarkers={canAddMarkers}
+              />
             ))}
           </div>
         )}
@@ -172,6 +195,7 @@ function TimelineItem({
   recording,
   markers,
   onCreateMarker,
+  canAddMarkers,
 }: {
   recording: Recording
   markers: TimelineMarker[]
@@ -182,6 +206,7 @@ function TimelineItem({
     label: string
     note?: string
   }) => Promise<void>
+  canAddMarkers: boolean
 }) {
   const [label, setLabel] = useState('')
   const question = useQuestionStore((s) => s.questions.find((q) => q.id === recording.question_id))
@@ -210,28 +235,32 @@ function TimelineItem({
             ))}
           </div>
         )}
-        <div className="inline-form">
-          <input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="标注关键节点，如：回忆童年故居"
-          />
-          <button
-            className="btn btn-plain btn-small"
-            disabled={!label.trim()}
-            onClick={async () => {
-              await onCreateMarker({
-                project_id: recording.project_id,
-                recording_id: recording.id,
-                timestamp_second: recording.duration_seconds > 0 ? Math.floor(recording.duration_seconds / 2) : 0,
-                label: label.trim(),
-              })
-              setLabel('')
-            }}
-          >
-            ＋ 标注节点
-          </button>
-        </div>
+        {canAddMarkers ? (
+          <div className="inline-form">
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="标注关键节点，如：回忆童年故居"
+            />
+            <button
+              className="btn btn-plain btn-small"
+              disabled={!label.trim()}
+              onClick={async () => {
+                await onCreateMarker({
+                  project_id: recording.project_id,
+                  recording_id: recording.id,
+                  timestamp_second: recording.duration_seconds > 0 ? Math.floor(recording.duration_seconds / 2) : 0,
+                  label: label.trim(),
+                })
+                setLabel('')
+              }}
+            >
+              ＋ 标注节点
+            </button>
+          </div>
+        ) : (
+          <div className="muted">受访者授权生效后才能标注时间轴节点。</div>
+        )}
       </div>
     </div>
   )
