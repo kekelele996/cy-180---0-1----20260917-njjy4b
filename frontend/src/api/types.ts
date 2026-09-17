@@ -1,5 +1,5 @@
 // 与后端 model/dto 对应的类型定义。
-import type { ProjectStatus, RecordingStatus, Role } from '../constants'
+import type { ConsentStatus, ProjectStatus, RecordingStatus, Role } from '../constants'
 
 export interface User {
   id: number
@@ -60,6 +60,21 @@ export interface TimelineMarker {
   note: string
   created_by: number
   created_at: string
+}
+
+export interface Consent {
+  id: number
+  project_id: number
+  status: ConsentStatus
+  note: string
+  revoke_reason: string
+  registered_by: number
+  verified_by: number
+  revoked_by: number
+  verified_at: string | null
+  revoked_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface AuditLog {

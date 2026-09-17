@@ -29,12 +29,13 @@ type recordingService struct {
 	recordingRepo repository.RecordingRepository
 	projectRepo   repository.ProjectRepository
 	questionRepo  repository.QuestionRepository
+	consentRepo   repository.ConsentRepository
 	logger        *slog.Logger
 }
 
 // NewRecordingService 构造录音服务。
-func NewRecordingService(recordingRepo repository.RecordingRepository, projectRepo repository.ProjectRepository, questionRepo repository.QuestionRepository, logger *slog.Logger) RecordingService {
-	return &recordingService{recordingRepo: recordingRepo, projectRepo: projectRepo, questionRepo: questionRepo, logger: logger}
+func NewRecordingService(recordingRepo repository.RecordingRepository, projectRepo repository.ProjectRepository, questionRepo repository.QuestionRepository, consentRepo repository.ConsentRepository, logger *slog.Logger) RecordingService {
+	return &recordingService{recordingRepo: recordingRepo, projectRepo: projectRepo, questionRepo: questionRepo, consentRepo: consentRepo, logger: logger}
 }
 
 func (s *recordingService) Create(actor *model.User, req *dto.CreateRecordingRequest) (*model.Recording, error) {
@@ -44,11 +45,20 @@ func (s *recordingService) Create(actor *model.User, req *dto.CreateRecordingReq
 		}
 		return nil, util.NewAppError(constants.CodeInternal, fmt.Sprintf("查询项目 %d 失败", req.ProjectID), err)
 	}
-	if _, err := s.questionRepo.FindByID(req.QuestionID); err != nil {
+	question, err := s.questionRepo.FindByID(req.QuestionID)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, util.NewAppError(constants.CodeNotFound, fmt.Sprintf("问题 %d 不存在", req.QuestionID), err)
 		}
 		return nil, util.NewAppError(constants.CodeInternal, fmt.Sprintf("查询问题 %d 失败", req.QuestionID), err)
+	}
+	if question.ProjectID != req.ProjectID {
+		return nil, util.NewAppError(constants.CodeCrossProject,
+			fmt.Sprintf("问题 %d 不属于项目 %d，禁止跨项目引用录音", req.QuestionID, req.ProjectID), nil)
+	}
+	if err := ensureConsentEffective(s.consentRepo, req.ProjectID, "新增录音"); err != nil {
+		s.logger.Warn(fmt.Sprintf(constants.LogConsentBlocked, req.ProjectID, "recording.create", consentStatusOf(s.consentRepo, req.ProjectID)))
+		return nil, err
 	}
 	recording := &model.Recording{
 		ProjectID:       req.ProjectID,

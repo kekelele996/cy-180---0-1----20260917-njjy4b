@@ -1,4 +1,5 @@
 import {
+  CONSENT_STATUS_TEXT,
   PROJECT_STATUS_TEXT,
   RECORDING_STATUS_TEXT,
   ROLE_TEXT,
@@ -25,6 +26,10 @@ export function projectStatusText(status: string): string {
 
 export function recordingStatusText(status: string): string {
   return RECORDING_STATUS_TEXT[status] || status
+}
+
+export function consentStatusText(status: string): string {
+  return CONSENT_STATUS_TEXT[status] || status
 }
 
 export function roleText(role: string): string {

@@ -4,6 +4,8 @@ import { useSearchParams } from 'react-router-dom'
 import AudioPlayer from '../../components/AudioPlayer'
 import EmptyState from '../../components/EmptyState'
 import StatusBadge from '../../components/StatusBadge'
+import { CONSENT_STATUS_VERIFIED } from '../../constants'
+import { useConsentStore } from '../../stores/consentStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { useQuestionStore } from '../../stores/questionStore'
 import { useRecordingStore } from '../../stores/recordingStore'
@@ -16,6 +18,7 @@ export default function InterviewPage() {
   const { projects, fetchList } = useProjectStore()
   const { questions, fetchByProject } = useQuestionStore()
   const { fetchByProject: fetchRecordings } = useRecordingStore()
+  const { current: currentConsent, fetchByProject: fetchConsents } = useConsentStore()
   const [activeQuestion, setActiveQuestion] = useState(0)
   const [message, setMessage] = useState('')
 
@@ -27,11 +30,12 @@ export default function InterviewPage() {
     if (selectedProject) {
       fetchByProject(selectedProject)
       fetchRecordings(selectedProject)
+      fetchConsents(selectedProject)
       setActiveQuestion(0)
     } else {
       setActiveQuestion(0)
     }
-  }, [selectedProject, fetchByProject, fetchRecordings])
+  }, [selectedProject, fetchByProject, fetchRecordings, fetchConsents])
 
   const chooseProject = (projectId: number) => {
     const next = new URLSearchParams(params)
@@ -86,15 +90,23 @@ export default function InterviewPage() {
           </section>
 
           {activeQuestion > 0 && (
-            <RecorderPanel
-              projectId={selectedProject}
-              questionId={activeQuestion}
-              onRecorded={(summary) => {
-                fetchRecordings(selectedProject)
-                setMessage(summary)
-                setTimeout(() => setMessage(''), 4000)
-              }}
-            />
+            <>
+              {currentConsent?.status !== CONSENT_STATUS_VERIFIED && (
+                <div className="notice warning">
+                  受访者授权未生效（当前：{currentConsent ? '待核验或已撤销' : '未登记'}），授权生效前不能录音或标注时间轴节点
+                </div>
+              )}
+              <RecorderPanel
+                projectId={selectedProject}
+                questionId={activeQuestion}
+                consentVerified={currentConsent?.status === CONSENT_STATUS_VERIFIED}
+                onRecorded={(summary) => {
+                  fetchRecordings(selectedProject)
+                  setMessage(summary)
+                  setTimeout(() => setMessage(''), 4000)
+                }}
+              />
+            </>
           )}
         </>
       )}
@@ -105,10 +117,12 @@ export default function InterviewPage() {
 function RecorderPanel({
   projectId,
   questionId,
+  consentVerified,
   onRecorded,
 }: {
   projectId: number
   questionId: number
+  consentVerified: boolean
   onRecorded: (msg: string) => void
 }) {
   const { create, uploadAudio, updateSummary, fetchByQuestion } = useRecordingStore()
@@ -211,9 +225,12 @@ function RecorderPanel({
             </button>
           </>
         ) : (
-          <button className="btn btn-primary" onClick={startRecording}>
-            ⏺ 开始录音
-          </button>
+          <>
+            <button className="btn btn-primary" onClick={startRecording} disabled={!consentVerified}>
+              ⏺ 开始录音
+            </button>
+            {!consentVerified && <div className="muted">受访者授权未生效，无法开始录音</div>}
+          </>
         )}
       </div>
 
@@ -258,23 +275,27 @@ function RecorderPanel({
                       {m.label}
                     </span>
                   ))}
-                <input
-                  placeholder="新增节点，如：讲到参军经历"
-                  style={{ maxWidth: 220 }}
-                  id={`marker-input-${r.id}`}
-                />
-                <button
-                  className="btn btn-plain btn-small"
-                  onClick={() => {
-                    const input = document.getElementById(`marker-input-${r.id}`) as HTMLInputElement
-                    if (input?.value.trim()) {
-                      addMarker(r.id, input.value.trim())
-                      input.value = ''
-                    }
-                  }}
-                >
-                  ＋ 标注
-                </button>
+                {consentVerified && (
+                  <>
+                    <input
+                      placeholder="新增节点，如：讲到参军经历"
+                      style={{ maxWidth: 220 }}
+                      id={`marker-input-${r.id}`}
+                    />
+                    <button
+                      className="btn btn-plain btn-small"
+                      onClick={() => {
+                        const input = document.getElementById(`marker-input-${r.id}`) as HTMLInputElement
+                        if (input?.value.trim()) {
+                          addMarker(r.id, input.value.trim())
+                          input.value = ''
+                        }
+                      }}
+                    >
+                      ＋ 标注
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}

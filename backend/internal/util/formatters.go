@@ -58,6 +58,20 @@ func RoleText(role string) string {
 	}
 }
 
+// ConsentStatusText 返回授权状态的展示文本（与前端徽标枚举同步）。
+func ConsentStatusText(status string) string {
+	switch status {
+	case constants.ConsentStatusPending:
+		return "待核验"
+	case constants.ConsentStatusVerified:
+		return "已核验"
+	case constants.ConsentStatusRevoked:
+		return "已撤销"
+	default:
+		return "未知"
+	}
+}
+
 // FormatDuration 将秒数格式化为 mm:ss。
 func FormatDuration(seconds int) string {
 	return fmt.Sprintf("%02d:%02d", seconds/60, seconds%60)

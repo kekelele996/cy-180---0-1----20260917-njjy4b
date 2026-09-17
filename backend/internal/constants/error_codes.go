@@ -17,6 +17,10 @@ const (
 	CodeProjectStatus   = 40902 // 项目状态流转非法
 	CodeRecordingStatus = 40903 // 录音状态流转非法
 	CodeMarkerConflict  = 40904 // 时间轴节点冲突
+	CodeConsentRequired = 40905 // 受访者授权未生效
+	CodeConsentConflict = 40906 // 授权状态冲突（重复登记/重复核验/重复撤销）
+	CodeConsentReadOnly = 40907 // 项目已归档，授权只读
+	CodeCrossProject    = 40001 // 跨项目引用非法
 )
 
 // 错误码对应的默认文案。
@@ -35,6 +39,10 @@ var errorMessages = map[int]string{
 	CodeProjectStatus:   "project status transition not allowed",
 	CodeRecordingStatus: "recording status transition not allowed",
 	CodeMarkerConflict:  "timeline marker conflict",
+	CodeConsentRequired: "interviewee consent not effective",
+	CodeConsentConflict: "consent status conflict",
+	CodeConsentReadOnly: "consent is read-only after project archived",
+	CodeCrossProject:    "cross-project reference not allowed",
 }
 
 // Message 返回错误码对应的默认文案。

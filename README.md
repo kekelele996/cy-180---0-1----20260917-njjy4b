@@ -33,6 +33,7 @@ docker compose down -v --remove-orphans
 
 - 用户注册/登录（JWT 认证 + RBAC 角色：管理员 / 采访员 / 档案员）
 - 采访项目管理：创建、编辑、状态流转（草稿 → 进行中 → 已完成 → 已归档）、删除
+- 受访者授权闭环：采访员登记授权 → 档案员核验生效 → 管理员可撤销（必填原因）；授权生效前禁止新增录音与时间轴节点，撤销后立即阻止后续上传，项目归档后授权只读，已有材料保留供复核
 - 采访问题管理：为项目添加问题清单，作为录音提纲
 - 录音管理：浏览器端录音 → 上传 MinIO → 自动关联到对应问题 → 一句话摘要
 - 时间轴：按项目/录音标注关键节点，项目页按时间线展示所有片段并支持播放
@@ -152,7 +153,7 @@ npm run dev                # 默认 http://localhost:5173，/api 代理到 http:
 | PUT | /api/v1/questions/:id | 更新问题 | 登录 |
 | DELETE | /api/v1/questions/:id | 删除问题 | 登录 |
 | GET | /api/v1/recordings?project_id= 或 ?question_id= | 录音列表（复用 RecordingService.List） | 登录 |
-| POST | /api/v1/recordings | 创建录音记录 | 登录 |
+| POST | /api/v1/recordings | 创建录音记录（需授权已核验） | 登录 |
 | GET | /api/v1/recordings/:id | 录音详情 | 登录 |
 | PUT | /api/v1/recordings/:id | 更新录音 | 登录 |
 | PUT | /api/v1/recordings/:id/summary | 更新一句话摘要 | 登录 |
@@ -160,9 +161,13 @@ npm run dev                # 默认 http://localhost:5173，/api 代理到 http:
 | GET | /api/v1/recordings/:id/audio | 播放音频流 | 登录 |
 | DELETE | /api/v1/recordings/:id | 删除录音 | 登录 |
 | GET | /api/v1/timeline-markers?project_id= 或 ?recording_id= | 时间轴节点（复用 TimelineMarkerService.List） | 登录 |
-| POST | /api/v1/timeline-markers | 标注节点 | 登录 |
+| POST | /api/v1/timeline-markers | 标注节点（需授权已核验） | 登录 |
 | PUT | /api/v1/timeline-markers/:id | 更新节点 | 登录 |
 | DELETE | /api/v1/timeline-markers/:id | 删除节点 | 登录 |
+| GET | /api/v1/consents?project_id= | 项目授权列表与当前授权 | 登录 |
+| POST | /api/v1/consents | 登记受访者授权 | 采访员 |
+| PUT | /api/v1/consents/:id/verify | 核验授权（生效） | 档案员 |
+| PUT | /api/v1/consents/:id/revoke | 撤销授权（必填原因） | 管理员 |
 | GET | /api/v1/audit-logs | 审计日志 | 管理员 |
 
 复用关系说明：`GET /api/v1/recordings?project_id=` 与 `GET /api/v1/recordings?question_id=` 复用 `RecordingService.List`；`GET /api/v1/timeline-markers?project_id=` 与 `GET /api/v1/timeline-markers?recording_id=` 复用 `TimelineMarkerService.List`；前端 `ProjectForm` 组件在项目列表页与项目详情页复用，`StatusBadge` / `AudioPlayer` 在多个页面复用。
@@ -208,6 +213,21 @@ curl -sS -X PUT http://localhost:9180/api/v1/recordings/1/summary \
 curl -sS -X POST http://localhost:9180/api/v1/timeline-markers \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"project_id":1,"recording_id":1,"timestamp_second":6,"label":"讲到胡同捉迷藏","note":"情绪激动"}'
+
+# 授权闭环：采访员登记 → 档案员核验 → 生效后才可录音/标注
+# 1) 采访员登记授权（ARCHIVIST_TOKEN / INTERVIEWER_TOKEN 为对应角色账号的 token）
+curl -sS -X POST http://localhost:9180/api/v1/consents \
+  -H "Authorization: Bearer $INTERVIEWER_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"project_id":1,"note":"已签署纸质授权书"}'
+# 2) 档案员核验（授权生效）
+curl -sS -X PUT http://localhost:9180/api/v1/consents/1/verify \
+  -H "Authorization: Bearer $ARCHIVIST_TOKEN"
+# 3) 管理员撤销（必须填写原因，撤销后立即阻止后续上传）
+curl -sS -X PUT http://localhost:9180/api/v1/consents/1/revoke \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"reason":"受访者撤回授权"}'
+# 4) 查看项目授权历史（撤销后仍可读，已有材料保留供复核）
+curl -sS "http://localhost:9180/api/v1/consents?project_id=1" -H "Authorization: Bearer $TOKEN"
 
 # 项目状态流转
 curl -sS -X PUT http://localhost:9180/api/v1/projects/1/status \
@@ -282,6 +302,31 @@ curl -sS "http://localhost:9180/api/v1/audit-logs?page=1&page_size=10" -H "Autho
 - `frontend/src/pages/projects/ProjectDetailPage.tsx`（时间线状态展示）
 - `frontend/src/pages/interview/InterviewPage.tsx`（录音面板状态展示）
 - `frontend/src/api/types.ts`（RecordingStatus 类型）
+
+### 4. 授权状态 ConsentStatus（pending / verified / revoked）
+
+后端出现位置：
+- `backend/internal/constants/consent_status.go`（定义与校验）
+- `backend/internal/model/consent.go`（status 字段）
+- `backend/internal/dto/consent.go`（Register/Revoke 请求）
+- `backend/internal/service/consent_service.go`（登记/核验/撤销状态机、归档只读、授权生效门禁 ensureConsentEffective）
+- `backend/internal/service/recording_service.go`、`backend/internal/service/timeline_marker_service.go`（创建前强制校验授权已生效）
+- `backend/internal/handler/consent_handler.go`（登记/核验/撤销/列表接口）
+- `backend/internal/router/consent.go`（RBAC：采访员登记、档案员核验、管理员撤销）
+- `backend/internal/repository/consent_repository.go`（按项目查询最新授权）
+- `backend/internal/util/formatters.go`（ConsentStatusText）
+- `backend/internal/constants/log_templates.go`（LogConsentRegister/Verify/Revoke/Blocked）
+- `backend/internal/constants/error_codes.go`（CodeConsentRequired/Conflict/ReadOnly、CodeCrossProject）
+- `backend/internal/middleware/error_handler.go`（授权错误码 → HTTP 状态映射）
+
+前端出现位置：
+- `frontend/src/constants/index.ts`（CONSENT_STATUS_* / CONSENT_STATUS_TEXT）
+- `frontend/src/utils/format.ts`（consentStatusText）
+- `frontend/src/components/StatusBadge.tsx`（授权状态徽标）
+- `frontend/src/api/consent.ts`、`frontend/src/stores/consentStore.ts`（授权接口与状态）
+- `frontend/src/pages/projects/ProjectDetailPage.tsx`（授权卡片：采访员登记、档案员核验、管理员撤销入口，归档只读提示）
+- `frontend/src/pages/interview/InterviewPage.tsx`（授权未生效时禁用录音与标注）
+- `frontend/src/api/types.ts`（ConsentStatus / Consent 类型）
 
 ## Docker 部署说明
 

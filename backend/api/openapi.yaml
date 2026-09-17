@@ -101,6 +101,57 @@ paths:
   /timeline-markers/{id}:
     put: { summary: 更新时间轴节点, tags: [timeline], security: [{ BearerAuth: [] }] }
     delete: { summary: 删除时间轴节点, tags: [timeline], security: [{ BearerAuth: [] }] }
+  /consents:
+    get:
+      summary: 项目授权列表与当前授权（project_id 必填）
+      tags: [consents]
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: integer } }
+    post:
+      summary: 登记受访者授权（仅采访员）
+      tags: [consents]
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id]
+              properties:
+                project_id: { type: integer }
+                note: { type: string, maxLength: 512 }
+      responses:
+        '200': { description: 登记成功，状态 pending }
+        '403': { description: 越权（非采访员） }
+        '409': { description: 重复登记或项目已归档只读 }
+  /consents/{id}/verify:
+    put:
+      summary: 核验授权（仅档案员，核验后生效）
+      tags: [consents]
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: 核验成功，状态 verified }
+        '403': { description: 越权（非档案员） }
+        '409': { description: 非待核验状态或项目已归档只读 }
+  /consents/{id}/revoke:
+    put:
+      summary: 撤销授权（仅管理员，必须填写原因，撤销后立即阻止后续上传）
+      tags: [consents]
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 512 }
+      responses:
+        '200': { description: 撤销成功，状态 revoked }
+        '400': { description: 缺少撤销原因 }
+        '403': { description: 越权（非管理员） }
+        '409': { description: 重复撤销或项目已归档只读 }
   /audit-logs:
     get:
       summary: 审计日志列表（仅管理员）

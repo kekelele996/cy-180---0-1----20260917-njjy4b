@@ -298,6 +298,9 @@ textarea:focus {
 .badge-processing { background: #fef3c7; color: #92400e; }
 .badge-ready { background: #d1fae5; color: #065f46; }
 .badge-failed { background: #e5e7eb; color: #6b7280; }
+.badge-pending { background: #fef3c7; color: #92400e; }
+.badge-verified { background: #d1fae5; color: #065f46; }
+.badge-revoked { background: #fee2e2; color: #991b1b; }
 .badge-default { background: #e5e7eb; color: #374151; }
 
 .empty-state {
@@ -658,6 +661,16 @@ textarea:focus {
 
 .toast.success { background: #059669; }
 .toast.error { background: var(--danger); }
+
+.notice {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.notice.warning { background: #fef3c7; color: #92400e; }
+.notice.error { background: #fee2e2; color: #991b1b; }
 
 .login-page {
   min-height: 100vh;

@@ -22,15 +22,16 @@ type TimelineMarkerService interface {
 }
 
 type timelineMarkerService struct {
-	markerRepo repository.TimelineMarkerRepository
-	projectRepo repository.ProjectRepository
+	markerRepo    repository.TimelineMarkerRepository
+	projectRepo   repository.ProjectRepository
 	recordingRepo repository.RecordingRepository
-	logger     *slog.Logger
+	consentRepo   repository.ConsentRepository
+	logger        *slog.Logger
 }
 
 // NewTimelineMarkerService 构造时间轴节点服务。
-func NewTimelineMarkerService(markerRepo repository.TimelineMarkerRepository, projectRepo repository.ProjectRepository, recordingRepo repository.RecordingRepository, logger *slog.Logger) TimelineMarkerService {
-	return &timelineMarkerService{markerRepo: markerRepo, projectRepo: projectRepo, recordingRepo: recordingRepo, logger: logger}
+func NewTimelineMarkerService(markerRepo repository.TimelineMarkerRepository, projectRepo repository.ProjectRepository, recordingRepo repository.RecordingRepository, consentRepo repository.ConsentRepository, logger *slog.Logger) TimelineMarkerService {
+	return &timelineMarkerService{markerRepo: markerRepo, projectRepo: projectRepo, recordingRepo: recordingRepo, consentRepo: consentRepo, logger: logger}
 }
 
 func (s *timelineMarkerService) Create(actor *model.User, req *dto.CreateTimelineMarkerRequest) (*model.TimelineMarker, error) {
@@ -40,11 +41,20 @@ func (s *timelineMarkerService) Create(actor *model.User, req *dto.CreateTimelin
 		}
 		return nil, util.NewAppError(constants.CodeInternal, fmt.Sprintf("查询项目 %d 失败", req.ProjectID), err)
 	}
-	if _, err := s.recordingRepo.FindByID(req.RecordingID); err != nil {
+	recording, err := s.recordingRepo.FindByID(req.RecordingID)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, util.NewAppError(constants.CodeNotFound, fmt.Sprintf("录音 %d 不存在", req.RecordingID), err)
 		}
 		return nil, util.NewAppError(constants.CodeInternal, fmt.Sprintf("查询录音 %d 失败", req.RecordingID), err)
+	}
+	if recording.ProjectID != req.ProjectID {
+		return nil, util.NewAppError(constants.CodeCrossProject,
+			fmt.Sprintf("录音 %d 不属于项目 %d，禁止跨项目引用标注时间轴节点", req.RecordingID, req.ProjectID), nil)
+	}
+	if err := ensureConsentEffective(s.consentRepo, req.ProjectID, "标注时间轴节点"); err != nil {
+		s.logger.Warn(fmt.Sprintf(constants.LogConsentBlocked, req.ProjectID, "marker.create", consentStatusOf(s.consentRepo, req.ProjectID)))
+		return nil, err
 	}
 	marker := &model.TimelineMarker{
 		ProjectID:       req.ProjectID,
